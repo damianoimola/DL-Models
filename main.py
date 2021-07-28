@@ -1,17 +1,18 @@
-import object_prediction.core as obj
-import tkinter as tk
-import tkinter.filedialog as fd
-
+from simple_classifier import core as simple_classifier
+from siamese_network import core as siamese
 
 if __name__ == '__main__':
-    car_prediction = obj.CarPrediction(show_image_to_predict=True)
-    # car_prediction.train()
+    siamese.run()
 
-    # get the image/s
-    root = tk.Tk()
-    root.withdraw()
-    paths = fd.askopenfilenames(parent=root, title='Choose a file')
 
-    # predict
-    for p in paths:
-        print("The image", "is" if car_prediction.predict(p) > 0.6 else "is not", "a car")
+
+
+
+
+
+
+
+
+
+
+
