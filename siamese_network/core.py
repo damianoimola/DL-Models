@@ -178,8 +178,7 @@ def run():
     vect_output_b = base_network(input_b)
 
     # measure the similarity of the two vector outputs
-    output = Lambda(euclidean_distance, name="output_layer", output_shape=eucl_dist_output_shape)(
-        [vect_output_a, vect_output_b])
+    output = Lambda(euclidean_distance, name="output_layer", output_shape=eucl_dist_output_shape)([vect_output_a, vect_output_b])
 
     # specify the inputs and output of the model
     model = Model([input_a, input_b], output)
