@@ -72,6 +72,6 @@ def run():
     train_images = train_images.astype('float32') / 255
     test_images = test_images.astype('float32') / 255
 
-    resnet.fit(x=train_images, y=train_labels, validation_data=(test_images, test_labels), epochs=1)
+    resnet.fit(x=train_images, y=train_labels, validation_data=(test_images, test_labels), epochs=1, verbose=True)
 
 
