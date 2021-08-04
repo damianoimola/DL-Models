@@ -19,7 +19,11 @@ def preprocess_image(images):
     return images
 
 
-class ImoNet(tf.keras.Model):
+
+"""
+    Bad Acc and Loss
+"""
+class ImoNet_Test(tf.keras.Model):
     def __init__(self, filters, kernel_size, num_classes):
         super(ImoNet, self).__init__()
         self.block1 = NestedBlock(filters, kernel_size + 2)
@@ -41,8 +45,7 @@ class ImoNet(tf.keras.Model):
         x = self.result(x)
         return x
 
-
-class NestedBlock(tf.keras.Model):
+class NestedBlock_Test(tf.keras.Model):
     def __init__(self, filters, kernel_size):
         super(NestedBlock, self).__init__(name='')
         self.conv_1x1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=(1, 1), padding='same', name='Conv2D_1x1')
@@ -92,13 +95,123 @@ class NestedBlock(tf.keras.Model):
         return conc
 
 
+
+"""
+    TRYING
+"""
+# or W-net
+class ImoNet(tf.keras.Model):
+    def __init__(self, filters, kernel_size, num_classes):
+        super(ImoNet, self).__init__()
+        # utils
+        self.conc = tf.keras.layers.Concatenate()
+        self.pred = tf.keras.layers.Conv2D(kernel_size=1, filters=filters)
+        # encoders
+        self.fe1_1 = FeatureEncoder(filters, kernel_size)
+        self.fe1_2 = FeatureEncoder(filters * 2, kernel_size)
+        self.fe1_3 = FeatureEncoder(filters * 4, kernel_size)
+        self.fe1_4 = FeatureEncoder(filters * 6, kernel_size)
+        # bottleneck
+        self.btlneck1 = tf.keras.layers.Conv2D(filters=filters * 8, kernel_size=kernel_size, padding='same',
+                                               name='Conv2D_btlneck1_{}x{}'.format(kernel_size, kernel_size))
+        # decoders
+        self.fd1_4 = FeatureDecoder(filters, kernel_size * 6)
+        self.fd1_3 = FeatureDecoder(filters, kernel_size * 4)
+        # bottleneck
+        self.btlneck2 = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same',
+                                               name='Conv2D_btlneck2_{}x{}'.format(kernel_size, kernel_size))
+        # encoders
+        self.fe2_3 = FeatureEncoder(filters * 4, kernel_size)
+        self.fe2_4 = FeatureEncoder(filters * 6, kernel_size)
+        # bottleneck
+        self.btlneck3 = tf.keras.layers.Conv2D(filters=filters * 28, kernel_size=kernel_size, padding='same',
+                                               name='Conv2D_btlneck3_{}x{}'.format(kernel_size, kernel_size))
+        # decoders
+        self.fd2_4 = FeatureDecoder(filters, kernel_size * 6)
+        self.fd2_3 = FeatureDecoder(filters, kernel_size * 4)
+        self.fd2_2 = FeatureDecoder(filters, kernel_size * 2)
+        self.fd2_1 = FeatureDecoder(filters, kernel_size)
+
+    def call(self, inputs):
+        fe1_1 = self.fe1_1(inputs)
+        fe1_2 = self.fe1_2(fe1_1)
+        fe1_3 = self.fe1_3(fe1_2)
+        fe1_4 = self.fe1_4(fe1_3)
+        btlneck1 = self.btlneck1(fe1_4)
+
+        conc1 = self.conc([fe1_4, btlneck1])
+
+        fd1_4 = self.fd1_4(conc1)
+        fd1_3 = self.fd1_4(fd1_4)
+        btlneck2 = self.btlneck2(fe1_3)
+
+        conc2 = self.conc([fe1_3, btlneck2])
+
+        fe2_3 = self.fe2_3(conc2)
+        fe2_4 = self.fe2_4(fe2_3)
+        btlneck3 = self.btlneck3(fe2_4)
+
+        conc3 = self.conc([fe2_4, btlneck3])
+
+        fe2_4 = self.fe1_2(conc3)
+        fe2_3 = self.fe1_3(fe2_4)
+        fe2_2 = self.fe1_4(fe2_3)
+        fe2_1 = self.fe1_4(fe2_2)
+
+        pred = self.pred(fe2_1)
+        return pred
+
+class FeatureEncoder(tf.keras.Model):
+    def __init__(self, filters, kernel_size):
+        super(FeatureEncoder, self).__init__()
+        self.conv1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
+                                            name='Conv2D_1_{}x{}'.format(kernel_size, kernel_size))
+        self.conv2 = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same',
+                                            name='Conv2D_2_{}x{}'.format(kernel_size, kernel_size))
+        self.act = tf.keras.layers.Activation('relu')
+        self.avgp = tf.keras.layers.AveragePooling2D()
+        self.do = tf.keras.layers.Dropout(0.2)
+
+    def call(self, inputs):
+        x = self.conv1(inputs)
+        x = self.conv2(x)
+        x = self.act(x)
+        x = self.avgp(x)
+        return x
+
+class FeatureDecoder(tf.keras.Model):
+    def __init__(self, filters, kernel_size):
+        super(FeatureDecoder, self).__init__()
+        self.convt1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, padding='same',
+                                                      name='Conv2D_1_{}x{}'.format(kernel_size, kernel_size))
+        self.convt2 = tf.keras.layers.Conv2DTranspose(filters=filters / 2, kernel_size=kernel_size, padding='same',
+                                                      name='Conv2D_2_{}x{}'.format(kernel_size, kernel_size))
+        self.act = tf.keras.layers.Activation('relu')
+        self.avgp = tf.keras.layers.AveragePooling2D(pool_size=(2, 2))
+        self.do = tf.keras.layers.Dropout(0.2)
+
+    def call(self, inputs):
+        x = self.convt1(inputs)
+        x = self.convt2(x)
+        x = self.act(x)
+        x = self.avgp(x)
+        return x
+
+
+
+
+
+
+
+
+
 def run():
     (train_img, train_lbl), (val_img, val_lbl) = tf.keras.datasets.cifar10.load_data()
 
     train_img = preprocess_image(train_img)
     val_img = preprocess_image(val_img)
 
-    imonet = ImoNet(10, 3, 10)
+    imonet = ImoNet(64, 3, 10)
 
     # plot_model(imonet, show_shapes=True, show_layer_names=True, to_file='imonet.png', expand_nested=True)
     imonet.compile(optimizer=tf.keras.optimizers.Adam(),
