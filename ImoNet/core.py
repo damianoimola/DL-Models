@@ -2,7 +2,7 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from tensorflow.python.keras.utils.vis_utils import plot_model
-
+import matplotlib.pyplot as plt
 
 """
 
@@ -12,11 +12,23 @@ from tensorflow.python.keras.utils.vis_utils import plot_model
 
 """
 
+# usefull methods
 
 def preprocess_image(images):
     images = images.astype("float32") / 255
     # images = np.expand_dims(images, axis=1)
     return images
+
+def plot_data(data):
+  plt.plot(data['loss'], label="loss")
+  plt.plot(data['accuracy'], label="accuracy")
+  plt.plot(data['val_loss'], label="val_loss")
+  plt.plot(data['val_accuracy'], label="val_accuracy")
+  #plt.plot(data['loss'], data['accuracy'], data['val_loss'], data['val_accuracy'])
+  plt.legend()
+
+
+
 
 
 
@@ -25,13 +37,13 @@ def preprocess_image(images):
 """
 class ImoNet_Test(tf.keras.Model):
     def __init__(self, filters, kernel_size, num_classes):
-        super(ImoNet, self).__init__()
+        super(ImoNet_Test, self).__init__()
         self.block1 = NestedBlock(filters, kernel_size + 2)
-        self.block2 = NestedBlock(filters, kernel_size)
+        self.block2 = NestedBlock(filters * 2, kernel_size)
         self.dense1 = tf.keras.layers.Dense(units=1024, activation='relu')
         self.dense2 = tf.keras.layers.Dense(units=512, activation='relu')
         self.dense3 = tf.keras.layers.Dense(units=512, activation='relu')
-        self.conv = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same', strides=(2, 2))
+        self.conv = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same', strides=(2, 2))
         self.do = tf.keras.layers.Dropout(0.2)
         self.mp = tf.keras.layers.MaxPool2D()
         self.flat = tf.keras.layers.Flatten()
@@ -42,12 +54,14 @@ class ImoNet_Test(tf.keras.Model):
         x = self.block1(x)
         x = self.block2(x)
         x = self.flat(x)
+        x = self.dense2(x)
+        x = self.mp(x)
         x = self.result(x)
         return x
 
-class NestedBlock_Test(tf.keras.Model):
+class NestedBlock(tf.keras.Model):
     def __init__(self, filters, kernel_size):
-        super(NestedBlock, self).__init__(name='')
+        super(NestedBlock, self).__init__()
         self.conv_1x1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=(1, 1), padding='same', name='Conv2D_1x1')
         self.conv_nxn = tf.keras.layers.Conv2D(filters=filters, kernel_size=(kernel_size, kernel_size), padding='same',
                                                name='Conv2D_nxn')
@@ -97,12 +111,11 @@ class NestedBlock_Test(tf.keras.Model):
 
 
 """
-    TRYING
+    TRYING (Full conv, no dense layers. Conv 1x1 as labeler)
 """
-# or W-net
-class ImoNet(tf.keras.Model):
+class W_Net(tf.keras.Model):
     def __init__(self, filters, kernel_size, num_classes):
-        super(ImoNet, self).__init__()
+        super(W_Net, self).__init__()
         # utils
         self.conc = tf.keras.layers.Concatenate()
         self.pred = tf.keras.layers.Conv2D(kernel_size=1, filters=filters)
@@ -153,12 +166,12 @@ class ImoNet(tf.keras.Model):
 
         conc3 = self.conc([fe2_4, btlneck3])
 
-        fe2_4 = self.fe1_2(conc3)
-        fe2_3 = self.fe1_3(fe2_4)
-        fe2_2 = self.fe1_4(fe2_3)
-        fe2_1 = self.fe1_4(fe2_2)
+        fd2_4 = self.fd2_4(conc3)
+        fd2_3 = self.fd2_3(fd2_4)
+        fd2_2 = self.fd2_2(fd2_3)
+        fd2_1 = self.fd2_1(fd2_2)
 
-        pred = self.pred(fe2_1)
+        pred = self.pred(fd2_1)
         return pred
 
 class FeatureEncoder(tf.keras.Model):
@@ -169,7 +182,7 @@ class FeatureEncoder(tf.keras.Model):
         self.conv2 = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same',
                                             name='Conv2D_2_{}x{}'.format(kernel_size, kernel_size))
         self.act = tf.keras.layers.Activation('relu')
-        self.avgp = tf.keras.layers.AveragePooling2D()
+        self.avgp = tf.keras.layers.AveragePooling2D(pool_size=(2, 2))
         self.do = tf.keras.layers.Dropout(0.2)
 
     def call(self, inputs):
@@ -183,9 +196,9 @@ class FeatureDecoder(tf.keras.Model):
     def __init__(self, filters, kernel_size):
         super(FeatureDecoder, self).__init__()
         self.convt1 = tf.keras.layers.Conv2DTranspose(filters=filters, kernel_size=kernel_size, padding='same',
-                                                      name='Conv2D_1_{}x{}'.format(kernel_size, kernel_size))
+                                                      name='Conv2DT_1_{}x{}'.format(kernel_size, kernel_size))
         self.convt2 = tf.keras.layers.Conv2DTranspose(filters=filters / 2, kernel_size=kernel_size, padding='same',
-                                                      name='Conv2D_2_{}x{}'.format(kernel_size, kernel_size))
+                                                      name='Conv2DT_2_{}x{}'.format(kernel_size, kernel_size))
         self.act = tf.keras.layers.Activation('relu')
         self.avgp = tf.keras.layers.AveragePooling2D(pool_size=(2, 2))
         self.do = tf.keras.layers.Dropout(0.2)
@@ -199,8 +212,58 @@ class FeatureDecoder(tf.keras.Model):
 
 
 
+"""
+    VGG CLONE APPROX 40 EPOCHS
+    Test with increasing DropOut value (cap @ 0.4)
+    
+    NOW: Acc: 0.89; Loss: 0.43
+"""
+class ImoNet(tf.keras.Model):
+    def __init__(self, filters, kernel_size):
+        super(ImoNet, self).__init__()
+        self.conv1_1 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_1_1_{}x{}'.format(kernel_size, kernel_size),
+                                              input_shape=(32, 32, 3))
+        self.conv1_2 = tf.keras.layers.Conv2D(filters=filters, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_1_2_{}x{}'.format(kernel_size, kernel_size))
+        self.conv2_1 = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_2_1_{}x{}'.format(kernel_size, kernel_size))
+        self.conv2_2 = tf.keras.layers.Conv2D(filters=filters * 2, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_2_2_{}x{}'.format(kernel_size, kernel_size))
+        self.conv3_1 = tf.keras.layers.Conv2D(filters=filters * 4, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_3_1_{}x{}'.format(kernel_size, kernel_size))
+        self.conv3_2 = tf.keras.layers.Conv2D(filters=filters * 4, kernel_size=kernel_size, padding='same',
+                                              name='Conv2D_3_2_{}x{}'.format(kernel_size, kernel_size))
 
+        self.mp1 = tf.keras.layers.MaxPooling2D(pool_size=2)
+        self.mp2 = tf.keras.layers.MaxPooling2D(pool_size=2)
+        self.mp3 = tf.keras.layers.MaxPooling2D(pool_size=2)
+        self.do2 = tf.keras.layers.Dropout(0.2)
+        self.do3 = tf.keras.layers.Dropout(0.2)
+        self.do4 = tf.keras.layers.Dropout(0.2)
+        self.f = tf.keras.layers.Flatten()
+        self.dense1 = tf.keras.layers.Dense(units=128, activation='relu',
+                                            activity_regularizer=tf.keras.regularizers.L2(0.01))
+        self.dense2 = tf.keras.layers.Dense(units=10, activation='softmax')
 
+    def call(self, inputs):
+        x = self.conv1_1(inputs)
+        x = self.conv1_2(x)
+        x = self.mp1(x)
+        x = self.do2(x)
+        x = self.conv2_1(x)
+        x = self.conv2_2(x)
+        # x = self.mp2(x)
+        x = self.do3(x)
+        x = self.conv3_1(x)
+        x = self.conv3_2(x)
+        x = self.mp3(x)
+        x = self.do4(x)
+        x = self.f(x)
+        x = self.dense1(x)
+        x = self.do4(x)
+        x = self.dense2(x)
+        return x
 
 
 
@@ -211,13 +274,15 @@ def run():
     train_img = preprocess_image(train_img)
     val_img = preprocess_image(val_img)
 
-    imonet = ImoNet(64, 3, 10)
+    #imonet = ImoNet_Test(256, 3, 10)
+    imonet = ImoNet(32, 3)
 
     # plot_model(imonet, show_shapes=True, show_layer_names=True, to_file='imonet.png', expand_nested=True)
-    imonet.compile(optimizer=tf.keras.optimizers.Adam(),
-                   loss='sparse_categorical_crossentropy',
+    imonet.compile(optimizer=tf.keras.optimizers.SGD(learning_rate=0.001, momentum=0.9),
+                   loss=tf.keras.losses.sparse_categorical_crossentropy,
                    metrics=['accuracy'])
 
     print("Starting fit the model")
-    imonet.fit(x=train_img, y=train_lbl, validation_data=(val_img, val_lbl), epochs=10, verbose=1)
+    history = imonet.fit(x=train_img, y=train_lbl, validation_data=(val_img, val_lbl), epochs=40, verbose=1)
+    plot_data(history.history)
     print("Finished to fit the model")
